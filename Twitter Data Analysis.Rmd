@@ -1,0 +1,264 @@
+  ---
+title: "Twitter Data Analysis through study of Topological characteristics"
+author: "Nikitha Agarampalli"
+date: "February 26, 2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+## Overview  
+
+Social network analysis is the study of social networks to understand their structure and behavior. With the high trending of social media such as Facebook, Twitter etc., the analysis of these networks has gained popularity, especially in the field of data mining. The underlying connectivity between the users are clearly understood from thse analysis. One such network is picked up in this assignment for performing the network analysis. Twitter is an online news, microblogging and social networking service where millions of users post and interact with messages called tweets. A user can follow any number of users to receive their tweets and can retweet the same to spread the information of their choice beyond the reach of the original tweet's followers.   
+
+The goal of this assignment is to collect the twitter data and study the topological characteristics of various tweets from the users. We have crawled through the entire twitter site and obtained top 'n' number of tweets based on a search term. The data such as the tweets, retweets and their sources are extracted and stored in a dataframe. Based on the dataframe, network graphs are plotted to understand the links between the tweets and determine various measurements.
+
+In addition to this, the network graph is ran through random walks and a new graph is generated with the nodes visited by the random walking. Both the graphs are analysed, compared and the results are presented.
+
+```{r global_options, include=FALSE}
+rm(list=ls()) 
+library(knitr)
+opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+               echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+# Loading the necessary packages to connect to Twitter and retrieve the data
+
+library(devtools)
+library(twitteR)
+library("igraph")
+library("stringr")
+```
+
+## PART - 1 - Crawling the Twitter Dataset
+
+```{r}
+# Providing the credentials to connect to my Twitter account
+
+api_key="bz0yLx1IVhb7ZttweqnnxNI0d"
+api_secret="puIMZVGnV7ENCqW0Wzf45tZntTcwDloZmSxCJ4Hr6nrZsajiWt"
+access_token="2194357634-lylG93bIoSrfBpT5WPW9FCxHB1PcC8t4k1NQBZy"
+access_token_secret="AMVS5RZr8HboylxRwrHcBEmCRTKEewWipZBqeKPojolBF"
+
+# Authenticating and accessing the twitter account of the user details provided above
+
+setup_twitter_oauth(api_key,api_secret,access_token,access_token_secret)
+```
+
+### Data Crawling Steps  
+
+The steps involved in retrieving the necessary data from the Twitter account is as follows.  
+
+1. Install the necessary R package files to connect to Twitter and access the data from it.  
+2. To start working on the Twitter API follow the below steps:  
+    * Sign-up for your own Twitter App, i.e. go to https://apps.twitter.com/  
+    * Configure the Toolbox with your generated personal access credentials.  
+    * Get the necessary credentials from the application generated  
+3. Once the application is set and the credentials are retrieved, provide these in the R script to set up the authentication using in-built function set_twitter_oauth.  
+4. Provide a search term to get n number of tweets related to the search term.  
+5. The tweets and retweets along with the source of the tweets are extracted and merged to a dataframe.  
+
+*This data is used for further processing.*
+
+### Data Cleaning Issues  
+
+In general, whenever we retrieve information from any social networking websites, there will be number of junk data induced in the dataset. This must be cleaned before using it for any further processing. In this application, we have retrieved the data from Twitter, whose data consists of number of junk characters.
+I have retrieved the tweets and the retweets based on a search term and extracted only the user/source of the tweets as my final dataset. Hence, there was no cleaning issue encountered as a part of this process. Only process I have used here is removing of few special characters and whitespaces so that the user information is extracted more accurately.
+
+```{r}
+# Retrieving top 100 tweets based on the below search term
+
+tweets <- searchTwitter("Behindwoods", n=200, lang="en") 
+
+# Getting the text and identifying the retweeted data
+
+get_text <-  sapply(tweets, function(x) x$getText())
+
+grep("(RT|via)((?:\\b\\W*@\\w+)+)", tweets, 
+     ignore.case=TRUE, value=TRUE)
+
+tweets_pattern <- grep("(RT|via)((?:\\b\\W*@\\w+)+)", 
+                   get_text, ignore.case=TRUE)
+
+head(get_text[tweets_pattern],10)
+
+# List of User names who posted the tweets
+
+retweet <- as.list(1:length(tweets_pattern))
+postedby <- as.list(1:length(tweets_pattern))
+
+# Get the tweet with retweet entity and extract the source of retweet.
+# Cleaning the tweets by removing ":"
+# The retweeted and retweeting users are given with a name
+
+for (i in 1:length(tweets_pattern))
+{ 
+  twit <- tweets[[tweets_pattern[i]]]
+  poster <- str_extract_all(twit$getText(), "(RT|via)((?:\\b\\W*@\\w+)+)") 
+  poster <- gsub(":", "", unlist(poster)) 
+  postedby[[i]] <- gsub("(RT @|via @)", "", poster, ignore.case=TRUE) 
+  retweet[[i]] <- rep(twit$getScreenName(), length(poster)) 
+}
+
+# The above created list is unlisted to show the source of tweets and retweets in terms of the user name
+
+postedby = unlist(postedby)
+retweet = unlist(retweet)
+
+head(postedby,10)
+head(retweet,10)
+
+# Creating Retweet Graph by combining the data of retweets and user details retrieved above
+# The background layout of the graph is defined usingg par()
+# The Title of the graph is also defined
+# The Force directed algorithm(layout.fruchterman.reingold) is implemented to avoid bunching up of the nodes
+
+retweeted_poster <- cbind(retweet, postedby)
+tweet_graph <-  graph.edgelist(retweeted_poster)
+
+par(bg="white", mar=c(1,1,1,1))
+plot(tweet_graph, layout=layout.fruchterman.reingold(tweet_graph),
+     vertex.color="yellow",
+     vertex.size=4,
+     vertex.shape="circle",
+     vertex.label.color="black",
+     vertex.label=NA,
+     vertex.label.cex=0.85,
+     vertex.label.dist=8,
+     edge.arrow.size=0.8,
+     edge.arrow.width=0.5,
+     edge.width=3,
+     edge.color=hsv(h=.95, s=1, v=.7, alpha=0.5))
+title("\nTweet Network Analysis for BEHINDWOODS",cex.main=1, col.main="black")
+```
+
+### Overall summary of the above plotted graph  
+
+The overall details of the plot such as number of vertices, edges etc are given below for better understanding of the dataset.
+
+```{r}
+# Summary Statistics of the Retrieved data
+
+cat("==================================================",
+    "Summary Statistics for the generated network graph","Vertices : ",length(V(tweet_graph)),"===============","Edges :",length(V(tweet_graph)),"===============","Directed :",is.directed(tweet_graph),sep = "\n")
+
+```
+
+### Useful measurements from the graph plotted above
+
+```{r}
+# Number of Weak components in the graph
+
+count_components(tweet_graph,mode=c("weak"))
+
+# Number of Strong components in the graph
+
+count_components(tweet_graph,mode=c("strong"))
+
+# Table of Shortest path of the graph
+
+tableofShortestpath <- shortest.paths(tweet_graph, v=V(tweet_graph), to=V(tweet_graph))
+head(tableofShortestpath)
+
+# Diameter of the graph
+
+diameter(tweet_graph, directed = FALSE, unconnected = TRUE)
+
+# Average Path Length of the graph
+
+average.path.length(tweet_graph,directed = FALSE, unconnected = TRUE)
+
+# Degree Distribution of the graph
+
+degree_distribution(tweet_graph,cumulative = FALSE)
+
+```
+
+## Observations - Network Graph of the Twitter base dataset
+
+This graph is generated using 200 tweets from which the corresponding user information are retrieved and are denoted as nodes of the graph. It is a directed graph with more strongly connected components which is evident from the visualization of the graph as well as from the numeric measurement of the strongly connected components. Based on this graph, the diameter, average path length and the degree distribution parameters are calculated.  
+
+## PART - 2 - Random Walk in the graph
+
+```{r}
+# Random Walk with three incremental steps of 25,50 and 75 respectively.
+# The Original Graph is coloured based on the nodes visited by the random walk algorithm
+
+randomwalk_1 <- random_walk(tweet_graph, start ="susidemachine", steps = 25, mode = "all", stuck = "return")
+V(tweet_graph)[randomwalk_1]$color<-"green"
+
+randomwalk_2 <- random_walk(tweet_graph, start ="studio9_suresh", steps = 50, mode = "all", stuck = "return")
+V(tweet_graph)[randomwalk_2]$color<-"blue"
+
+randomwalk_3 <- random_walk(tweet_graph, start ="bokkisamkishore", steps = 75, mode = "all", stuck = "return")
+V(tweet_graph)[randomwalk_3]$color<-"red"
+
+```
+
+### Plot of the original graph with three incremental steps of randon walks
+
+```{r}
+# Plot of the original graph with the random walk nodes coloured
+# The Force directed algorithm is implemented in the initial plot itself to avoid the bunching up of the nodes.
+plot(tweet_graph, layout=layout.fruchterman.reingold, vertex.color=V(tweet_graph)$color)
+
+```
+
+### Subgraph generated by running random walk on the original graph
+
+```{r}
+# New graph is built as a sub graph of the original graph by picking the nodes visited by random walk
+
+new_graph<-induced.subgraph(tweet_graph, which(V(tweet_graph)$color %in% c("red","blue","green")))
+plot(new_graph)
+
+```
+
+### Useful measurements from the above graph
+
+```{r}
+# Summary of the Network graph parameters
+
+cat("==================================================",
+    "Summary Statistics for the generated network graph","Vertices : ",length(V(new_graph)),"===============","Edges :",length(V(new_graph)),"===============","Directed :",is.directed(new_graph),sep = "\n")
+
+# Number of Weak components in the graph
+
+count_components(new_graph,mode=c("weak"))
+
+# Number of Strong components in the graph
+
+count_components(new_graph,mode=c("strong"))
+
+# Table of Shortest path of the graph
+
+tableofShortestpath_new <- shortest.paths(new_graph, v=V(new_graph), to=V(new_graph))
+head(tableofShortestpath_new)
+
+# Diameter of the graph
+
+diameter(new_graph, directed = FALSE, unconnected = TRUE)
+
+# Average Path Length of the graph
+
+average.path.length(new_graph,directed = FALSE, unconnected = TRUE)
+
+# Degree Distribution of the graph
+
+degree_distribution(new_graph,cumulative = FALSE)
+
+```
+
+## Observations - Network Graph generated from Random walk Nodes
+
+This graph is generated by performing a random walk on the original graph with three incremental steps (25, 50, 75). The graph obtained is the subgraph of the original graph where the random walk was ran through with three different user nodes. These are visualized and differentiated based on the colour parameter. This graph has a lesser diameter as this is a subgraph with lesser number of nodes and edges when compared to the original graph. The average path length is also a smaller value when compared to the original graph. 
+
+## Conclusion  
+
+It is evident from the graphs that more the number of nodes, the graph is strongly connected with higher values of all the related parameters. Upon comparing the measurement parameters obtained, the number of strongly and weakly connected components in the large graph is more than the other. Basically, strongly connected components are the sub graphs where nodes are connected such a way that, every node is reachable from any other nodes. On the other hand, weakly connected components are the sub graphs where every node of the sub graph isn't reachable from other nodes of the graph. As the original graph is large, it takes a higher number of steps to traverse from one node to another and so does the path length. However, the second graph visualized here is the subgraph of the bigger graph and has lesser number of nodes. This results in shorter path length and lesser number of steps to traverse from one vertex to another. Also, the loops are excluded from consideration while traversing. As there are lesser number of nodes in the second graph, the average number of steps for all possible pairs of nodes is also small compared to the larger graph. In terms of degree distribution, both graphs show even probability distribution of the degrees over the entire network respectively.  
+
+## References  
+
+1. [Statistical Network Analysis using with R and iGraphs](http://statmath.wu.ac.at/research/friday/resources_WS0708_SS08/igraph.pdf)  
+2. [iGraph for Network Analysis](https://igraph.github.io/netuser15/user-2015.html#162)
+3. [iGraph Documentation](http://igraph.org/r/doc/igraph.pdf)  
