@@ -1,0 +1,577 @@
+---
+title: "Community Detection Algorithm"
+author: "Nikitha Agarampalli"
+date: "April 18, 2018"
+output: html_document
+---
+
+## Overview  
+The goal of this project is to plot graphs for three different datasets to identify the cliques and communities in each graph. Further the description of cliques in each dataset is presented in terms of significant parameters and the community make-up of each dataset is analyzed and presented using three community detection algorithms.
+
+```{r global_options, include=FALSE}
+rm(list=ls()) 
+library(knitr)
+opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+               echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+# Loading the necessary packages 
+
+library(igraph)
+library(igraphdata)
+library(ggplot2)
+```
+
+## UkFaculty Dataset  
+### Clique description and Community algorithm implementation  
+
+```{r}
+# Creating graph for UKfaculty dataset
+
+data(UKfaculty, package="igraphdata")
+g1 <- upgrade_graph(UKfaculty)
+layt <- layout_with_fr(g1)
+plot(g1, layout = layt, vertex.frame.color="gray", vertex.label.color="black", vertex.label.cex=0.7, 
+     edge.curved=0.2, edge.width=0.8)
+g1 <- as.undirected(g1)
+```
+
+### Clique Description  
+A clique is the subgraph which forms a complete graph. There are multiple parameter that can describe the cliques in any given graph. The three major parameters viz., size of the largest clique, maximal clique distribution and the maximum clique has been used here to describe the cliques in the UKfaculty graph.  
+
+The largest clique in this graph has totally 9 vertices and the clique distribution ranges between 2 to 9 for this graph with the clique size 7 to be occuring most frequently. The clique with the largest size is plotted separately in red for better visualization.  
+
+```{r}
+# Parameters used to describe the Cliques in the above graph
+
+# 1. Size of Largest Clique
+
+max_size_clique <- clique_num(g1)
+sprintf("The size of the largest clique: %s", max_size_clique)
+
+# 2. Maximal Clique, its distribution and plot
+
+max_cliq <- max_cliques(g1)
+
+# unlist the lists within the clique list and get the length of each list which is the 
+# number of vertices in each clique. Convert it first into a vector and then to a data frame
+# create a frequency table for the same and add column names to it
+
+rl <- lapply(max_cliq, unlist)
+rl <- lapply(rl, length)
+rl <- as.vector(unlist(rl))
+rl.df <- as.data.frame(rl)
+
+rl.df.table <-table(rl.df)
+rl.df.table <-as.data.frame(rl.df.table)
+colnames(rl.df.table) <-c("clique_size", "frequency")
+
+ggplot(rl.df.table, aes(y=frequency, x = clique_size, fill=clique_size)) +
+  ggtitle("Figure 1: Distribution of Maximal cliques sizes") +
+  geom_bar(position="dodge", stat="identity")
+
+# 3. Maximum Clique
+
+larg_cliq <- largest_cliques(g1)
+
+#Visualizing the largest Clique in the original graph
+# get first largest clique in list
+# colour all nodes
+# colour the clique a different colour
+# colour the edges to be grey
+
+m<-unlist(larg_cliq[1])
+V(g1)$color <- "Green"
+vertex_attr(g1, "color", index = m) <- "red"
+E(g1)$color <-"grey"
+
+# colour (red) only the edges between vertices indexed by m (the vertices in the largest Clique)
+
+E(g1)[V(g1)[m] %--% V(g1)[m]]$color <-"red"
+plot(g1)
+
+# Plotting the largest clique individually
+
+V(g1)$label <- V(g1)
+g1_cliq<- induced_subgraph(g1, m, impl = "create_from_scratch")
+plot(g1_cliq)
+
+```
+
+### Community detection algorithm implementation  
+
+### 1. Girvan Newman Algorithm - community detection using edge-betweenness  
+It is a hierarchical method used to detect communities in complex systems. The Girvan-Newman algorithm detects communities by progressively removing edges from the original network. The connected components of the remaining network are the communities. Instead of trying to construct a measure that tells us which edges are the most central to communities, the Girvan-Newman algorithm focuses on edges that are most likely "between" communities.
+
+### (i). Dendogram Partitioning  
+
+```{r}
+
+set.seed(3233)
+eb_1 <- edge.betweenness.community(g1, membership = TRUE, merges = TRUE)
+eb_1.hclust <- as.hclust(eb_1)
+m<-matrix(nrow=length(V(g1)), ncol=2)
+
+# for each value of k make cut the dendogram measure the modularity at the cut
+
+for(j in 1:length(V(g1))){
+  
+  b <- cut_at(eb_1, no=j)
+  mod<-modularity(g1, b)
+  
+  m[j,1] = j
+  m[j,2] = mod
+}
+
+# which value of k has the highest modularity
+kmax<-m[,1][which((m[,2])==max(m[,2]))]
+
+# make a data frame from m
+m.df<- as.data.frame(m)
+colnames(m.df) <- c("k","M")
+n<-vcount(g1)
+require(ggplot2)
+
+k<-kmax
+b <- cut_at(eb_1, no=kmax)
+mod<-modularity(g1, b)
+
+plot(as.dendrogram(eb_1))
+rect.hclust(eb_1.hclust, k = k, border = "red")
+
+```
+
+### (ii). Community Composition  
+
+```{r}
+
+colours <- c('#7fc97f','#beaed4','#fdc086','#ffff99','#386cb0','#f0027f','#bf5b17','#ff7f00','#cab2d6','#6a3d9a','#ffff99','#b15928')
+
+plot(eb_1, g1, layout=layt,vertex.frame.color="gray", vertex.label.color="black", vertex.label.cex=0.7,main = paste(" Edge_Betweenness Comm., k=", k, "; Modularity=", round(mod,2)))
+
+```
+
+### 2. Fast greedy modularity maximisation Algorithm  
+Modularity Maximisation is the process of discovering communities in the network by maximising the modularity value.  
+
+### (i). Dendogram Partitioning  
+
+```{r}
+
+set.seed(4292)
+fg_1<- cluster_fast_greedy(g1, membership = TRUE, merges = TRUE)
+mod_max<- max(fg_1$modularity)
+k_opt<- length(fg_1)
+fg_1.hclust <- as.hclust(fg_1)
+
+plot(as.dendrogram(fg_1.hclust))
+rect.hclust(fg_1.hclust, k = k_opt, border = "red")
+
+```
+
+### (ii). Community Composition  
+
+```{r}
+
+plot(fg_1, g1, layout=layt,vertex.frame.color="gray", vertex.label.color="black", vertex.label.cex=0.7,
+     main = paste(" Fast Greedy k=", k_opt, "; Modularity=", round(mod_max,2)))
+
+```
+
+### 3. Walktrap Algorithm: community structure via short random walks  
+This algorithm is based on the fact that a random walker tends to be trapped in dense part of a network corresponding to communities. It produces a hierarchy of partitions and modularity is used to determine the best set of communities.  
+
+### (i). Dendogram Partitioning  
+
+```{r}
+
+set.seed(3231)
+wt_1<- cluster_walktrap(g1,  membership = TRUE, merges = TRUE)
+mod_max<- max(wt_1$modularity)
+k_opt<- length(wt_1)
+wt_1.hclust <- as.hclust(wt_1)
+
+plot(as.dendrogram(wt_1.hclust))
+rect.hclust(wt_1.hclust, k = k_opt, border = "red")
+
+```
+
+### (ii). Community Composition  
+
+```{r}
+
+plot(wt_1, g1, layout=layt,vertex.frame.color="gray", vertex.label.color="black", vertex.label.cex=0.7,
+     main = paste("Walk Trap k =", k_opt, "; Modularity=", round(mod_max,2)))
+
+```
+
+## Karate dataset  
+### Clique description and Community detection algorithm implementation    
+
+```{r}
+# Creating graph for Karate dataset
+
+data(karate, package="igraphdata")
+g2 <- upgrade_graph(karate)
+layt <- layout_with_fr(g2)
+plot(g2, layout = layt, vertex.frame.color="gray", vertex.label.color="black", vertex.label.cex=0.7, edge.curved=0.2, edge.width=0.8)
+
+```
+
+### Clique Description  
+The three major parameters viz., size of the largest clique, maximal clique distribution and the maximum clique has been used here to describe the cliques in the Karate graph.  
+
+The largest clique in this graph has totally 5 vertices and the clique distribution ranges between 2 to 5 for this graph with the clique size 3 to be occuring most frequently. The clique with the largest size is plotted separately in red for better visualization.  
+
+```{r}
+# Parameters used to describe the Cliques in the above graph
+
+# 1. Size of Largest Clique
+
+max_size_clique_g2 <- clique_num(g2)
+sprintf("The size of the largest clique: %s", max_size_clique_g2)
+
+# 2. Maximal Clique, its distribution and plot
+
+max_cliq_g2 <- max_cliques(g2)
+
+# unlist the lists within the clique list and get the length of each list which is the 
+# number of vertices in each clique. Convert it first into a vector and then to a data frame
+# create a frequency table for the same and add column names to it
+
+rl_2 <- lapply(max_cliq_g2, unlist)
+rl_2 <- lapply(rl_2, length)
+rl_2 <- as.vector(unlist(rl_2))
+rl_2.df <- as.data.frame(rl_2)
+
+rl_2.df.table <-table(rl_2.df)
+rl_2.df.table <-as.data.frame(rl_2.df.table)
+colnames(rl_2.df.table) <-c("clique_size", "frequency")
+
+ggplot(rl_2.df.table, aes(y=frequency, x = clique_size, fill=clique_size)) +
+  ggtitle("Figure 1: Distribution of Maximal cliques sizes") +
+  geom_bar(position="dodge", stat="identity")
+
+# 3. Maximum Clique
+
+larg_cliq_g2 <- largest_cliques(g2)
+
+#Visualizing the largest Clique in the original graph
+# get first largest clique in list
+# colour all nodes
+# colour the clique a different colour
+# colour the edges to be grey
+
+m <- unlist(larg_cliq_g2[1])
+V(g2)$color <- "Green"
+vertex_attr(g2, "color", index = m) <- "red"
+E(g2)$color <-"grey"
+
+# colour (red) only the edges between vertices indexed by m (the vertices in the largest Clique)
+E(g2)[V(g2)[m] %--% V(g2)[m]]$color <-"red"
+plot(g2)
+
+# Plotting the largest clique individually
+
+V(g2)$label <- V(g2)
+g2_cliq<- induced_subgraph(g2, m, impl = "create_from_scratch")
+plot(g2_cliq)
+
+```
+
+### Community detection algorithm implementation  
+
+### 1. Girvan Newman Algorithm - community detection using edge-betweenness  
+
+### (i). Dendogram Partitioning  
+
+```{r}
+
+set.seed(3233)
+eb_2 <- edge.betweenness.community(g2, membership = TRUE, merges = TRUE)
+eb_2.hclust <- as.hclust(eb_2)
+m<-matrix(nrow=length(V(g2)), ncol=2)
+
+# for each value of k make cut the dendogram measure the modularity at the cut
+
+for(j in 1:length(V(g2))){
+  
+  b <- cut_at(eb_2, no=j)
+  mod<-modularity(g2, b)
+  
+  m[j,1] = j
+  m[j,2] = mod
+}
+
+# which value of k has the highest modularity
+kmax<-m[,1][which((m[,2])==max(m[,2]))]
+
+# make a data frame from m
+m.df<- as.data.frame(m)
+colnames(m.df) <- c("k","M")
+n<-vcount(g2)
+require(ggplot2)
+
+k<-kmax
+b <- cut_at(eb_2, no=kmax)
+mod<-modularity(g2, b)
+
+plot(as.dendrogram(eb_2))
+rect.hclust(eb_2.hclust, k = k, border = "red")
+
+```
+
+### (ii). Community Composition  
+
+```{r}
+
+colours <- c('#7fc97f','#beaed4','#fdc086','#ffff99','#386cb0','#f0027f','#bf5b17','#ff7f00','#cab2d6','#6a3d9a','#ffff99','#b15928')
+
+plot(eb_2, g2, layout=layt,vertex.frame.color="gray", vertex.label.color="black", vertex.label.cex=0.7,main = paste(" Edge_Betweenness Comm., k=", k, "; Modularity=", round(mod,2)))
+
+```
+
+### 2. Fast greedy modularity maximisation Algorithm  
+
+### (i). Dendogram Partitioning  
+
+```{r}
+
+set.seed(4292)
+fg_2<- cluster_fast_greedy(g2, membership = TRUE, merges = TRUE)
+mod_max<- max(fg_2$modularity)
+k_opt<- length(fg_2)
+fg_2.hclust <- as.hclust(fg_2)
+
+plot(as.dendrogram(fg_2.hclust))
+rect.hclust(fg_2.hclust, k = k_opt, border = "red")
+
+```
+
+### (ii). Community Composition  
+
+```{r}
+
+plot(fg_2, g2, layout=layt,vertex.frame.color="gray", vertex.label.color="black", vertex.label.cex=0.7,
+     main = paste(" Fast Greedy k=", k_opt, "; Modularity=", round(mod_max,2)))
+
+```
+
+### 3. Walktrap Algorithm: community structure via short random walks  
+
+### (i). Dendogram Partitioning  
+
+```{r}
+
+set.seed(3231)
+wt_2<- cluster_walktrap(g2,  membership = TRUE, merges = TRUE)
+mod_max<- max(wt_2$modularity)
+k_opt<- length(wt_2)
+wt_2.hclust <- as.hclust(wt_2)
+
+plot(as.dendrogram(wt_2.hclust))
+rect.hclust(wt_2.hclust, k = k_opt, border = "red")
+
+```
+
+### (ii). Community Composition  
+
+```{r}
+
+plot(wt_2, g2, layout=layt,vertex.frame.color="gray", vertex.label.color="black", vertex.label.cex=0.7,
+     main = paste("Walk Trap k =", k_opt, "; Modularity=", round(mod_max,2)))
+
+```
+
+## Macaque dataset  
+### Clique description and Community algorithm implementation  
+
+```{r}
+# Creating graph for Macaque dataset
+
+data(macaque, package="igraphdata")
+g3 <- upgrade_graph(macaque)
+layt <- layout_with_fr(g3)
+plot(g3, layout = layt, vertex.frame.color="gray", vertex.label.color="black", vertex.label.cex=0.7, edge.curved=0.2, edge.width=0.8)
+g3 <- as.undirected(g3)
+
+```
+
+### Clique Description  
+The three major parameters viz., size of the largest clique, maximal clique distribution and the maximum clique has been used here to describe the cliques in the Macaque graph.  
+
+The largest clique in this graph has totally 7 vertices and the clique distribution ranges between 3 to 7 for this graph with the clique size 4 to be occuring most frequently. The clique with the largest size is plotted separately in red for better visualization.  
+
+```{r}
+# Parameters used to describe the Cliques in the above graph
+
+# 1. Size of Largest Clique
+
+max_size_clique_g3 <- clique_num(g3)
+sprintf("The size of the largest clique: %s", max_size_clique_g3)
+
+# 2. Maximal Clique, its distribution and plot
+
+max_cliq_g3 <- max_cliques(g3)
+
+# unlist the lists within the clique list and get the length of each list which is the 
+# number of vertices in each clique. Convert it first into a vector and then to a data frame
+# create a frequency table for the same and add column names to it
+
+rl_3 <- lapply(max_cliq_g3, unlist)
+rl_3 <- lapply(rl_3, length)
+rl_3 <- as.vector(unlist(rl_3))
+rl_3.df <- as.data.frame(rl_3)
+
+rl_3.df.table <-table(rl_3.df)
+rl_3.df.table <-as.data.frame(rl_3.df.table)
+colnames(rl_3.df.table) <-c("clique_size", "frequency")
+
+ggplot(rl_3.df.table, aes(y=frequency, x = clique_size, fill=clique_size)) +
+  ggtitle("Figure 1: Distribution of Maximal cliques sizes") +
+  geom_bar(position="dodge", stat="identity")
+
+# 3. Maximum Clique
+
+larg_cliq_g3<- largest_cliques(g3)
+
+#Visualizing the largest Clique in the original graph
+# get first largest clique in list
+# colour all nodes
+# colour the clique a different colour
+# colour the edges to be grey
+
+m <- unlist(larg_cliq_g3[1])
+V(g3)$color <- "Green"
+vertex_attr(g3, "color", index = m) <- "red"
+E(g3)$color <-"grey"
+
+# colour (red) only the edges between vertices indexed by m (the vertices in the largest Clique)
+
+E(g3)[V(g3)[m] %--% V(g3)[m]]$color <-"red"
+plot(g3)
+
+# Plotting the largest clique individually
+
+V(g3)$label <- V(g3)
+g3_cliq<- induced_subgraph(g3, m, impl = "create_from_scratch")
+plot(g3_cliq)
+
+```
+
+### Community detection algorithm implementation  
+
+### 1. Girvan Newman Algorithm - community detection using edge-betweenness  
+
+### (i). Dendogram Partitioning  
+
+```{r}
+
+set.seed(3233)
+eb_3 <- edge.betweenness.community(g3, membership = TRUE, merges = TRUE)
+eb_3.hclust <- as.hclust(eb_3)
+m<-matrix(nrow=length(V(g3)), ncol=2)
+
+# for each value of k make cut the dendogram measure the modularity at the cut
+
+for(j in 1:length(V(g3))){
+  
+  b <- cut_at(eb_3, no=j)
+  mod<-modularity(g3, b)
+  
+  m[j,1] = j
+  m[j,2] = mod
+}
+
+# which value of k has the highest modularity
+kmax<-m[,1][which((m[,2])==max(m[,2]))]
+
+# make a data frame from m
+m.df<- as.data.frame(m)
+colnames(m.df) <- c("k","M")
+n<-vcount(g3)
+require(ggplot2)
+
+k<-kmax
+b <- cut_at(eb_3, no=kmax)
+mod<-modularity(g3, b)
+
+plot(as.dendrogram(eb_3))
+rect.hclust(eb_3.hclust, k = k, border = "red")
+
+```
+
+### (ii). Community Composition  
+
+```{r}
+
+colours <- c('#7fc97f','#beaed4','#fdc086','#ffff99','#386cb0','#f0027f','#bf5b17','#ff7f00','#cab2d6','#6a3d9a','#ffff99','#b15928')
+
+plot(eb_3, g3, layout=layt,vertex.frame.color="gray", vertex.label.color="black", vertex.label.cex=0.7,main = paste(" Edge_Betweenness Comm., k=", k, "; Modularity=", round(mod,2)))
+
+```
+
+### 2. Fast greedy modularity maximisation Algorithm  
+
+### (i). Dendogram Partitioning  
+
+```{r}
+
+set.seed(4292)
+fg_3<- cluster_fast_greedy(g3, membership = TRUE, merges = TRUE)
+mod_max<- max(fg_3$modularity)
+k_opt<- length(fg_3)
+fg_3.hclust <- as.hclust(fg_3)
+
+plot(as.dendrogram(fg_3.hclust))
+rect.hclust(fg_3.hclust, k = k_opt, border = "red")
+
+```
+
+### (ii). Community Composition  
+
+```{r}
+
+plot(fg_3, g3, layout=layt,vertex.frame.color="gray", vertex.label.color="black", vertex.label.cex=0.7,
+     main = paste(" Fast Greedy k=", k_opt, "; Modularity=", round(mod_max,2)))
+
+```
+
+### 3. Walktrap Algorithm: community structure via short random walks  
+
+### (i). Dendogram Partitioning  
+
+```{r}
+
+set.seed(3231)
+wt_3<- cluster_walktrap(g3,  membership = TRUE, merges = TRUE)
+mod_max<- max(wt_3$modularity)
+k_opt<- length(wt_3)
+wt_3.hclust <- as.hclust(wt_3)
+
+plot(as.dendrogram(wt_3.hclust))
+rect.hclust(wt_3.hclust, k = k_opt, border = "red")
+
+```
+
+### (ii). Community Composition  
+
+```{r}
+
+plot(wt_3, g3, layout=layt,vertex.frame.color="gray", vertex.label.color="black", vertex.label.cex=0.7,
+     main = paste("Walk Trap=", k_opt, "; Modularity=", round(mod_max,2)))
+
+```
+
+## Conclusions  
+As we know that, for any given network the partititon with **maximum modularity** corresponds to the **optimal community structure**. Based on the implementation of the three algorithms on each dataset, the best approach for each dataset to obtain optimal community structure is presented below:  
+
+```{r echo = FALSE, fig.width = 30, fig.height = 30, out.width = "100%", out.height = "100%", dpi = 200}
+
+image <- "Commentary_on_Outputs.png"
+include_graphics(image)
+
+```
+
+Overall, for the given three datasets, Girvan-Newman algorithm is said to produce least optimal community structure. Other two algorithms viz., Fast-greedy modularity maximization and Walktrap algorithms are said to perform better by producing high modularity value leading to highly optimized communtity partitioning.

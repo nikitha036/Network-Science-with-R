@@ -1,0 +1,406 @@
+---
+title: "Building graph Models"
+author: "Nikitha Agarampalli"
+date: "March 16, 2018"
+output: html_document
+---
+## Overview  
+
+Twitter is an online news, microblogging and social networking service where millions of users post and interact with messages called tweets. A user can follow any number of users to receive their tweets and can retweet the same to spread the information of their choice beyond the reach of the original tweet's followers.   
+
+The goal of this project is to collect the twitter data and study the topological characteristics of various tweets from the users through various benchmark graph models. The base network graph is plotted and its properties are compared with the plots and properties of the benchmark graph models.
+
+We have used three equivalent benchmark graph models as follows:  
+
+1. Random (G(N,p)) Model  
+2. Small World Model(Lattice and Rewired Model)  
+3. Preferential Attachment Model  
+
+The three major characteristics of the network graph is obtained for all the models and compared to understand the differences and similarities. The following properties are calculated:  
+
+1. Degree Distribution  
+2. Average Path Length  
+3. Cluster Coefficient  
+
+We have crawled through the entire twitter site and obtained top 'n' number of tweets based on a search term. The data such as the tweets, retweets and their sources are extracted and stored in a dataframe. Based on the dataframe, network graphs are plotted to understand the links between the tweets and determine various measurements.  
+
+```{r global_options, include=FALSE}
+rm(list=ls()) 
+library(knitr)
+opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+               echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+## Crawling the Twitter Dataset
+
+```{r}
+# Loading the necessary packages to connect to Twitter and retrieve the data
+
+library(devtools)
+library(twitteR)
+library("igraph")
+library("stringr")
+library(ggplot2)
+```
+
+```{r}
+# Providing the credentials to connect to my Twitter account
+
+api_key="bz0yLx1IVhb7ZttweqnnxNI0d"
+api_secret="puIMZVGnV7ENCqW0Wzf45tZntTcwDloZmSxCJ4Hr6nrZsajiWt"
+access_token="2194357634-lylG93bIoSrfBpT5WPW9FCxHB1PcC8t4k1NQBZy"
+access_token_secret="AMVS5RZr8HboylxRwrHcBEmCRTKEewWipZBqeKPojolBF"
+
+# Authenticating and accessing the twitter account of the user details provided above
+
+setup_twitter_oauth(api_key,api_secret,access_token,access_token_secret)
+
+# Retrieving top 100 tweets based on the below search term
+
+tweets <- searchTwitter("Behindwoods", n=220, lang="en") 
+
+# Getting the text and identifying the retweeted data
+
+get_text <-  sapply(tweets, function(x) x$getText())
+
+grep("(RT|via)((?:\\b\\W*@\\w+)+)", tweets, 
+     ignore.case=TRUE, value=TRUE)
+
+tweets_pattern <- grep("(RT|via)((?:\\b\\W*@\\w+)+)", 
+                   get_text, ignore.case=TRUE)
+
+head(get_text[tweets_pattern],10)
+
+# List of User names who posted the tweets
+
+retweet <- as.list(1:length(tweets_pattern))
+postedby <- as.list(1:length(tweets_pattern))
+
+# Get the tweet with retweet entity and extract the source of retweet.
+# Cleaning the tweets by removing ":"
+# The retweeted and retweeting users are given with a name
+
+for (i in 1:length(tweets_pattern))
+{ 
+  twit <- tweets[[tweets_pattern[i]]]
+  poster <- str_extract_all(twit$getText(), "(RT|via)((?:\\b\\W*@\\w+)+)") 
+  poster <- gsub(":", "", unlist(poster)) 
+  postedby[[i]] <- gsub("(RT @|via @)", "", poster, ignore.case=TRUE) 
+  retweet[[i]] <- rep(twit$getScreenName(), length(poster)) 
+}
+
+# The above created list is unlisted to show the source of tweets and retweets in terms of the user name
+
+postedby = unlist(postedby)
+retweet = unlist(retweet)
+
+head(postedby,10)
+head(retweet,10)
+
+# Creating Retweet Graph by combining the data of retweets and user details retrieved above
+# The background layout of the graph is defined usingg par()
+# The Title of the graph is also defined
+# The Force directed algorithm(layout.fruchterman.reingold) is implemented to avoid bunching up of the nodes
+
+retweeted_poster <- cbind(retweet, postedby)
+tweet_graph <-  graph.edgelist(retweeted_poster)
+```
+
+### Network Model of the Twitter dataset - Base Model
+
+```{r}
+par(bg="white", mar=c(1,1,1,1))
+plot(tweet_graph, layout=layout.fruchterman.reingold(tweet_graph),
+     vertex.color="yellow",
+     vertex.size=4,
+     vertex.shape="circle",
+     vertex.label.color="black",
+     vertex.label=NA,
+     vertex.label.cex=0.85,
+     vertex.label.dist=8,
+     edge.arrow.size=0.8,
+     edge.arrow.width=0.5,
+     edge.width=3,
+     edge.color=hsv(h=.95, s=1, v=.7, alpha=0.5))
+title("\nTweet Network Analysis for BEHINDWOODS",cex.main=1, col.main="black")
+```
+
+### Properties of the base Network
+
+```{r}
+# 1. Degree Distribution
+# Determining the degree of the model in a sorted format
+
+tweet_graph.degree <-degree(tweet_graph)
+head(sort(tweet_graph.degree, decreasing=TRUE),10)
+
+# Calculating the degree distribution and plotting it against the index
+
+tweet_graph.degree_distrib<-degree_distribution(tweet_graph, cumulative = FALSE)
+sprintf("Degree Distribution of base graph")
+tweet_graph.degree_distrib
+plot(tweet_graph.degree_distrib, main = "Degree Distribution Plot", xlab = "Index", ylab = "Degree Distribution")
+
+# 2. Average Path Length of the graph
+
+tweet_graph.apl <- average.path.length(tweet_graph,directed = FALSE, unconnected = TRUE)
+sprintf("The Average Path Length of base graph is %s", tweet_graph.apl)
+
+# 3. Clustering Coefficient
+
+tweet_graph.clus <- transitivity(tweet_graph)
+sprintf("clustering coefficient of base graph is %s", tweet_graph.clus)
+
+```
+
+### Inference from the Base Network Graph  
+
+This is the base graph generated using 220 tweets from which the corresponding user information are retrieved and are denoted as nodes of the graph. It is a directed graph with more strongly connected components which is evident from the visualization of the graph.  
+
+Based on this graph, the three major properties are calculated and below is the observation on each property.  
+
+1. **Degree Distribution** - This gives the probability distribution of the degrees of graph over the entire network nodes. From the degree distribution plot of this network, most of the nodes have low degree which is lesser than the average degree of the network and two nodes have higher degree. This shows that, the degree distribution follows power-law and such networks are also called as Scale-free networks. Since social networks are the most common type of scale-free networks, our graph proves the same.  
+
+2. **Average path length** - This is the average number of steps along the shortest path for all possible nodes in a network. The lesser the average path length most efficient is the network. The value of this parameter is ~3 in the case of the base network graph, which implies this is an efficient network.  
+
+3. **Clustering Coefficient** - The clustering coefficient gives the degree to which the nodes in the graph tends to cluster together. The value of this parameter is 0, which means there is a zero degree of cluster formation in the base network.  
+
+### Calculating the parameters for the below generated benchmark models for the twitter dataset  
+
+The necessary parameters for obtaining each model are calculated below.
+
+The total number of nodes and edges are the basic measurements from a graph which are used to calculate the probability and other measures.  
+
+The probability **p** for the **random model** is the probability of drawing an edge between two arbitary vertices in a graph. This is calculated by the formula  
+          **p = k/(n-1)**  
+          where k is the average degree of the network  
+                n is the total number of nodes in the network  
+                
+Similarly, another important parameter is the **beta** value for the **Small World Model**. This value is varied to interpolate between **a regular lattice - beta = 0** and **a random graph - beta = 1**.  For the purpose of this assignment I have generated both regular lattice and a random graph with both the beta values respectively.
+
+```{r}
+k <- mean(degree(tweet_graph)) # Average Degree of the original network
+n <- gorder(tweet_graph) # Total number of Nodes
+e <- ecount(tweet_graph) # Total number of edges
+p <- round(k/(n-1),5) # Probability p for the random GNP model
+
+```
+
+### Random (G(N,p)) model and its Properties  
+
+The random graph has been generated using Erdos-Rényi model where the nodes are connected randomly with the necessary parameters calculated above. Each edge is included in the graph with probability p independent from every other edge.  
+
+```{r}
+gnp <- erdos.renyi.game(n, p, type = "gnp")
+plot(gnp, vertex.label= NA, edge.arrow.size=0.02,vertex.size = 0.5, main = "Random Network: G(N,p) model")
+
+# 1. Degree Distribution
+# Determining the degree of the model in a sorted format
+
+gnp.degree <-degree(gnp)
+head(sort(gnp.degree, decreasing=TRUE),10)
+
+# Calculating the degree distribution and plotting it against the index
+
+gnp.degree_distrib<-degree_distribution(gnp, cumulative = FALSE)
+sprintf("Degree Distribution of Random (G(N,p)) model")
+gnp.degree_distrib
+plot(gnp.degree_distrib, main = "Degree Distribution Plot", xlab = "Index", ylab = "Degree Distribution")
+
+# 2.  Average Path Length
+
+gnp.apl <- average.path.length(gnp,directed = FALSE, unconnected = TRUE)
+sprintf("The Average path Length of Random (G(N,p)) model is %s", gnp.apl)
+
+# 3. Clustering Coefficient
+
+gnp.global.cc <- transitivity(gnp)
+sprintf("clustering coefficient of Random (G(N,p)) model with p = %s is %s", p, gnp.global.cc)
+
+```
+
+### Inference based on the properties  
+
+Based on this graph, the three major properties are calculated and below is the observation on each property.  
+
+1. **Degree Distribution** - From the degree distribution plot of this network, we can see that the distribution follows a Binomial distribution pattern. The graph shows a gradual increase until a point and then it drops down. The peak is almost the median of the x-axis and hence almost symmetric about the center.  
+
+2. **Average path length** - The value of this parameter is much higher than that of the base network model. This implies the network graph formed by this model is less efficient than the original or the base graph model.  
+
+3. **Clustering Coefficient** - The clustering coefficient of the Random G(N,p)) network graph is equal to the parameter probability p used in generating the random graph and this is evident from the value produced in our model which is ~ 0.01(p value). But this means denser graphs can be formed with high probability value which might be unrealistic in some networks.
+
+### Small World Model and its Properties  
+
+**Watts-Strogatz model** is a random graph  generation model which produces small world properties and so does the name **Small World Model**. This model generates graph with **short average path length and high clustering coefficient values**. This model is also called as the ***beta*** model as it uses the beta value for formalution.  
+
+### Small World Model - Regular Lattice with beta = 0  
+
+```{r}
+# Creating a lattice with beta = 0 and getting its properties
+
+beta=0
+smw <- graph.lattice( length=n, dim=1, nei=4 )
+plot(smw, layout=layout.circle(smw), main="Lattice")
+
+# 1. Degree Distribution
+# Determining the degree of the model in a sorted format
+
+smw.degree <-degree(smw)
+head(sort(smw.degree, decreasing=TRUE),10)
+
+# Calculating the degree distribution and plotting it against the index
+
+smw.degree_distrib = degree_distribution(smw, cumulative = FALSE)
+sprintf("Degree Distribution of Small World model")
+smw.degree_distrib
+plot(smw.degree_distrib, main=paste("Degree distribution, beta =", beta), 
+     xlab = "Index", ylab = "Degree Distribution")
+
+# 2. Average Path Length
+
+smw.apl <- average.path.length(smw,directed = FALSE, unconnected = TRUE)
+sprintf("The Average path Length of Small World model is %s", smw.apl)
+
+# 3. Clustering Coefficient
+
+smw.global.cc <- transitivity(smw)
+sprintf("clustering coefficient of Small World Model with beta = %s is %s", beta, smw.global.cc)
+```
+
+### Small World Model - Random graph model with beta = 1   
+
+```{r}
+# Randomly rewire edges with probability beta = 1 for the Small World Model
+
+beta = 1
+smw_rewire <- graph.lattice( length=n, dim=1, nei=4 )
+smw_rewire <- rewire(smw_rewire, each_edge(p = beta, loops = FALSE))
+plot(smw_rewire, layout=layout.circle(smw_rewire), main=paste("Lattice with edges rewired with probability", beta ))
+
+# 1. Degree Distribution
+# Determining the degree of the model in a sorted format
+
+smw_rewire.degree <-degree(smw_rewire)
+head(sort(smw_rewire.degree, decreasing=TRUE),10)
+
+# Calculating the degree distribution and plotting it against the index
+
+smw_rewire.degree_distrib = degree_distribution(smw_rewire, cumulative = FALSE)
+sprintf("Degree Distribution of Small World model")
+smw_rewire.degree_distrib
+plot(smw_rewire.degree_distrib, main=paste("Degree distribution for the rewired model, beta =", beta), 
+     xlab = "Index", ylab = "Degree Distribution")
+
+# 2. Average Path Length
+
+smw_rewire.apl <- average.path.length(smw_rewire,directed = FALSE, unconnected = TRUE)
+sprintf("The Average path Length of the rewired model is %s", smw_rewire.apl)
+
+# 3. Clustering Coefficient
+
+smw_rewire.global.cc <- transitivity(smw_rewire)
+sprintf("clustering coefficient of rewired model with beta = %s is %s", beta, smw_rewire.global.cc)
+
+```
+
+### Inference based on the properties  
+
+Based on this graph, the three major properties are calculated and below is the observation on each property.  
+
+1. **Degree Distribution** - The degree distribution of these models is unrealistic as most of the nodes have similar degrees due to underlying lattice. The graph tends to be almost flat when beta = 0 and tends to gradually increase and produce a pattern like Poisson's distribution when beta increases from 0 to 1.  
+
+2. **Average path length** - The average path length for both regular lattice and a random graph with beta equal to 0 and 1 respectively are calculated. The average path length for the lattice with beta = 0 is higher, which makes it more undesirable. However, increasing the value of beta = 1 decreased the average path length to ~2.75 from around 14 in the case of beta = 0, which forms a more efficient network like the base network. Since Small world models are meant to be producing small world properties leading to short path length and high clustering coefficient, this model is most desirable with beta = 1.  
+
+3. **Clustering Coefficient** - These types of models are meant for producing high clustering coefficient when the beta value is between 0 and 1. However, this value drops when beta reaches 1. This is evident in our model as, clustering coefficient at beta = 0 is 0.64 and 0.04 at beta = 1.
+
+
+### Preferential Attachment Model and its Properties  
+
+In some networks, a few "hubs" have lots of connections, while every others have only has a few. This model generates these networks by a process of **preferential attachment**, in which new network members prefer to make a connection with the most popular existing members. The networks generated from this model are usually scale-free networks.  
+
+```{r}
+pam <- sample_pa(n, power = 1, m = 1, out.dist = NULL, out.seq = NULL,
+          out.pref = FALSE, zero.appeal = 1, directed = TRUE,
+          algorithm = c("psumtree", "psumtree-multiple", "bag"), start.graph = NULL)
+plot(pam, main = "Preferential Attachment Model", 
+     layout=layout.fruchterman.reingold(pam),
+     vertex.color="red",
+     vertex.size=4,
+     vertex.shape="circle",
+     vertex.label.color="black",
+     vertex.label=NA,
+     vertex.label.cex=0.85,
+     vertex.label.dist=8,
+     edge.arrow.size=0.8,
+     edge.arrow.width=0.5,
+     edge.width=3,
+     edge.color=hsv(h=.95, s=1, v=.7, alpha=0.5))
+
+# 1. Degree Distribution
+# Determining the degree of the model in a sorted format
+
+pam.degree <-degree(pam)
+head(sort(pam.degree, decreasing=TRUE),10)
+
+# Calculating the degree distribution and plotting it against the index
+
+pam.degree_distribution = degree_distribution(pam, cumulative = FALSE)
+sprintf("Degree Distribution of the Preferential Attachment Model")
+pam.degree_distribution
+plot(pam.degree_distribution, main=paste("Degree Distribution"), xlab = "Index", ylab = "Degree Distribution")
+
+# 2. Average Path Length
+
+pam.apl <- average.path.length(pam,directed = FALSE, unconnected = TRUE)
+sprintf("The Average path Length of the Preferential Attachment Model is %s", pam.apl)
+
+# 3. Clustering Coefficient
+
+pam.global.cc <- transitivity(pam)
+sprintf("clustering coefficient of Preferential Attachment Model is %s", pam.global.cc)
+
+```
+
+### Inference based on the properties  
+
+Based on this graph, the three major properties are calculated and below is the observation on each property.  
+
+1. **Degree Distribution** - From the degree distribution plot of this network, we can see that this distribution also follows power-law like the base graph. Hence, this network is also called as, scale-free network model.  
+
+2. **Average path length** - The average path length for this model is ~5 which is lesser than the Random G(N,p) model, forming a better network than Random network. However, it is less efficient network than the base network and the Small World Network model with beta = 1. Such models have their average path length increasing approximately logarithmically with the network size.  
+
+3. **Clustering Coefficient** - There is no analytical method to determine the clustering coefficient for this model and hence the result zero in our generated model. But this can be calculated empirically which is dependent on the size of the network and usually of a smaller value when compared to other models.
+
+### Properties comparison of the generated models  
+
+```{r fig.width = 30, fig.height = 30, out.width = "100%", out.height = "100%", dpi = 200}
+image1 <- "Images/Properties_Value.png"
+include_graphics(image1)
+```
+
+### Comparison Table of the three important properties for the models generated  
+
+```{r fig.width = 30, fig.height = 30, out.width = "100%", out.height = "100%", dpi = 200}
+image2 <- "Images/Comparison_Table.png"
+include_graphics(image2)
+```
+
+### Conclusion  
+
+After carefully analyzing the Twitter network through different benchmark models, the following conclusions can be drawn:  
+
+1. From the above table information, it is evident that Preferential attachment network models exhibit similarities with the base network in terms of degree distribution and clustering coefficient. However, base network forms more efficient network than the preferential attachment network.  
+
+2. Small World network model has varying values for all the three properties based on the beta values. These networks behave like the base network in terms of average path length and clustering coefficient when beta = 1. However, the degree distribution of this model for both the cases is very unrealistic.  
+
+3. On the other hand, Random G(N,p) Network model doesn't have any similarities with the base network. It is very clear that, base network has contrasting properties when compared to this network model.  
+
+Overall, when comparing all the network models generated in this assignment, base network model seems to be more efficient followed by Small World Network models. However, preferential attachment network model is still good in its own way when compared to random network model which under performs in terms of all the three properties.  
+
+### References  
+
+1. [Wilensky, U. (2005). NetLogo Preferential Attachment model](http://ccl.northwestern.edu/netlogo/models/PreferentialAttachment)  
+2. [Barabási-Albert model to understand the properties of Preferential Attachment Model](https://en.wikipedia.org/wiki/Barab%C3%A1si%E2%80%93Albert_model)  
+3. [Erdos-Rényi model to understand the properties Random G(N,p) Model](https://en.wikipedia.org/wiki/Erd%C5%91s%E2%80%93R%C3%A9nyi_model)  
+4. [Watts-Strogatz model to understrand the properties of Small World Model](https://en.wikipedia.org/wiki/Watts%E2%80%93Strogatz_model)  
+5. Lecture Materials from **CT5133 - Web and Network Science** module  
